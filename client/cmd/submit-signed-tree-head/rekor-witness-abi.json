@@ -1,0 +1,166 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "bytes",
+        "name": "origin",
+        "type": "bytes"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "x",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "y",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "newHead",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newSize",
+        "type": "uint256"
+      }
+    ],
+    "name": "UpdatedTreeHead",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          { "internalType": "uint256", "name": "size", "type": "uint256" },
+          { "internalType": "bytes32", "name": "hash_", "type": "bytes32" }
+        ],
+        "internalType": "struct RekorWitness.TreeHead",
+        "name": "head",
+        "type": "tuple"
+      },
+      { "internalType": "bytes32", "name": "r", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "s", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "x", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "y", "type": "bytes32" },
+      { "internalType": "bytes", "name": "data", "type": "bytes" },
+      {
+        "internalType": "bytes32[]",
+        "name": "consistencyProof",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "checkConsistency",
+    "outputs": [
+      { "internalType": "bool", "name": "success", "type": "bool" },
+      {
+        "components": [
+          { "internalType": "bytes", "name": "origin", "type": "bytes" },
+          { "internalType": "uint256", "name": "size", "type": "uint256" },
+          { "internalType": "bytes32", "name": "hash_", "type": "bytes32" }
+        ],
+        "internalType": "struct RekorWitness.SignedCheckpoint",
+        "name": "ckpt",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          { "internalType": "uint256", "name": "size", "type": "uint256" },
+          { "internalType": "bytes32", "name": "hash_", "type": "bytes32" }
+        ],
+        "internalType": "struct RekorWitness.TreeHead",
+        "name": "head",
+        "type": "tuple"
+      },
+      { "internalType": "uint256", "name": "index", "type": "uint256" },
+      { "internalType": "bytes32", "name": "leafHash", "type": "bytes32" },
+      {
+        "internalType": "bytes32[]",
+        "name": "inclusionProof",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "checkInclusion",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "r", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "s", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "x", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "y", "type": "bytes32" },
+      { "internalType": "bytes", "name": "data", "type": "bytes" }
+    ],
+    "name": "decodeAndVerifySignedCheckpoint",
+    "outputs": [
+      {
+        "components": [
+          { "internalType": "bytes", "name": "origin", "type": "bytes" },
+          { "internalType": "uint256", "name": "size", "type": "uint256" },
+          { "internalType": "bytes32", "name": "hash_", "type": "bytes32" }
+        ],
+        "internalType": "struct RekorWitness.SignedCheckpoint",
+        "name": "result",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes", "name": "origin", "type": "bytes" },
+      { "internalType": "bytes32", "name": "x", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "y", "type": "bytes32" }
+    ],
+    "name": "getTreeHead",
+    "outputs": [
+      {
+        "components": [
+          { "internalType": "uint256", "name": "size", "type": "uint256" },
+          { "internalType": "bytes32", "name": "hash_", "type": "bytes32" }
+        ],
+        "internalType": "struct RekorWitness.TreeHead",
+        "name": "g",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "r", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "s", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "x", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "y", "type": "bytes32" },
+      { "internalType": "bytes", "name": "data", "type": "bytes" },
+      { "internalType": "uint256", "name": "prevTreeSize", "type": "uint256" },
+      {
+        "internalType": "bytes32[]",
+        "name": "consistencyProof",
+        "type": "bytes32[]"
+      }
+    ],
+    "name": "submitSignedTreeHead",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
