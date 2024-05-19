@@ -39,11 +39,8 @@ type Prover struct {
 }
 
 type ProverConfig struct {
-	// Ethereum endpoint. This endpoint should be trusted.
-	SecureEthApiEndpoint string
-
-	// An untrusted Ethereum endpoint. Defaults to the same value as SecureEthApiEndpoint.
-	UntrustedEthApiEndpoint string
+	// A list of Ethereum endpoints. Secure as long as any one of them is honest.
+	EthApiEndpointList []string
 
 	// Arbitrum L2 EVM-compatible endpoint. This does not have to be trusted.
 	UntrustedArbApiEndpoint string
@@ -72,56 +69,18 @@ func NewProver(config *ProverConfig) *Prover {
 }
 
 func (p *Prover) GetVerifiedStorageValues(ctx context.Context, logger *zap.Logger, address common.Address, slots []hexutil.Big) ([]hexutil.Big, error) {
-	ethc, err := ethclient.Dial(p.config.SecureEthApiEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize eth client: %w", err)
-	}
-	defer ethc.Close()
-
 	arbc, err := ethclient.Dial(p.config.UntrustedArbApiEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize arb client: %w", err)
 	}
 	defer arbc.Close()
 
-	packed, err := arbRollupAbi.Pack("latestNodeCreated")
+	head, err := FetchRollupHead(ctx, p.config.ArbRollupContractAddress, p.config.EthApiEndpointList)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch rollup head: %w", err)
 	}
-	var res hexutil.Bytes
-	err = ethc.Client().CallContext(ctx, &res, "eth_call", map[string]interface{}{
-		"from": common.Address{},
-		"to":   &p.config.ArbRollupContractAddress,
-		"data": hexutil.Encode(packed),
-	}, "latest")
-	if err != nil {
-		return nil, fmt.Errorf("failed to call latestNodeCreated: %w", err)
-	}
-	out, err := arbRollupAbi.Unpack("latestNodeCreated", res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unpack latestNodeCreated output: %w", err)
-	}
-	nodeIndex := out[0].(uint64)
 
-	packed, err = arbRollupAbi.Pack("getNode", nodeIndex)
-	if err != nil {
-		return nil, err
-	}
-	err = ethc.Client().CallContext(ctx, &res, "eth_call", map[string]interface{}{
-		"from": common.Address{},
-		"to":   &p.config.ArbRollupContractAddress,
-		"data": hexutil.Encode(packed),
-	}, "latest")
-	if err != nil {
-		return nil, fmt.Errorf("failed to call getNode: %w", err)
-	}
-	out, err = arbRollupAbi.Unpack("getNode", res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unpack latestNodeCreated output: %w", err)
-	}
-	createdAtBlock := reflect.ValueOf(out[0]).FieldByName("CreatedAtBlock").Interface().(uint64)
-	confirmData := reflect.ValueOf(out[0]).FieldByName("ConfirmData").Interface().([32]byte)
-	l2h, err := loadAndVerifyL2Header(ctx, logger, p.config, arbc, nodeIndex, createdAtBlock, confirmData)
+	l2h, err := loadAndVerifyL2Header(ctx, logger, p.config, arbc, head.NodeIndex, head.CreatedAtBlock, head.ConfirmData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load and verify L2 header: %w", err)
 	}
@@ -187,10 +146,7 @@ func (p *Prover) GetVerifiedStorageValues(ctx context.Context, logger *zap.Logge
 }
 
 func loadAndVerifyL2Header(ctx context.Context, logger *zap.Logger, config *ProverConfig, arbc *ethclient.Client, nodeIndex uint64, createdAtBlock uint64, confirmData [32]byte) (*types.Header, error) {
-	untrustedEthApiEndpoint := config.UntrustedEthApiEndpoint
-	if untrustedEthApiEndpoint == "" {
-		untrustedEthApiEndpoint = config.SecureEthApiEndpoint
-	}
+	untrustedEthApiEndpoint := config.EthApiEndpointList[0]
 	untrustedEthc, err := ethclient.Dial(untrustedEthApiEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize untrusted eth client: %w", err)
@@ -210,7 +166,7 @@ func loadAndVerifyL2Header(ctx context.Context, logger *zap.Logger, config *Prov
 		return nil, fmt.Errorf("failed to filter logs: %w", err)
 	}
 	if len(untrustedLogs) != 1 {
-		return nil, errors.New("unexpected number of logs")
+		return nil, fmt.Errorf("unexpected number of logs: %+v", untrustedLogs)
 	}
 	out, err := arbRollupAbi.Unpack("NodeCreated", untrustedLogs[0].Data)
 	if err != nil {

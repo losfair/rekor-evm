@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"os"
+	"strings"
 
 	"github.com/losfair/rekor-evm/client/prover"
 
@@ -18,19 +18,17 @@ import (
 
 func main() {
 	// Parse command line arguments
-	secureEthAPIEndpoint := flag.String("secure-eth-api", "https://rpc.flashbots.net", "Secure Ethereum API endpoint")
-	untrustedEthAPIEndpoint := flag.String("untrusted-eth-api", "", "Untrusted Ethereum API endpoint")
-	untrustedArbAPIEndpoint := flag.String("arb-api", "https://arbitrum-one.publicnode.com", "Untrusted Arbitrum API endpoint")
+	ethRpcList_ := flag.String(
+		"eth-rpc-list",
+		"https://rpc.flashbots.net,https://eth.llamarpc.com,https://ethereum-rpc.publicnode.com,https://cloudflare-eth.com",
+		"Comma-separated Ethereum RPC endpoint list. At least one of them should be honest.",
+	)
+	arbRpc := flag.String("arb-rpc", "https://arbitrum-one.publicnode.com", "Arbitrum RPC endpoint. This does not need to be trusted.")
 	arbRollupContractAddr := flag.String("arb-rollup-contract", "0x5eF0D09d1E6204141B4d37530808eD19f60FBa35", "Arbitrum Rollup contract address on Ethereum")
 	rekorWitnessContractAddr := flag.String("rekor-witness-contract", "0x50D49737c69eB3b6621f825CfFD2b13B9e41dDa3", "Rekor Witness contract address on Arbitrum")
 	flag.Parse()
 
-	// Validate input
-	if *secureEthAPIEndpoint == "" || *untrustedArbAPIEndpoint == "" || *arbRollupContractAddr == "" || *rekorWitnessContractAddr == "" {
-		fmt.Println("All arguments (-eth-api, -arb-api, and -arb-rollup-contract) are required")
-		flag.Usage()
-		os.Exit(1)
-	}
+	ethRpcList := strings.Split(*ethRpcList_, ",")
 
 	// Setup logger
 	logger, err := zap.NewProduction()
@@ -41,9 +39,8 @@ func main() {
 
 	// Initialize Prover
 	config := &prover.ProverConfig{
-		SecureEthApiEndpoint:     *secureEthAPIEndpoint,
-		UntrustedEthApiEndpoint:  *untrustedEthAPIEndpoint,
-		UntrustedArbApiEndpoint:  *untrustedArbAPIEndpoint,
+		EthApiEndpointList:       ethRpcList,
+		UntrustedArbApiEndpoint:  *arbRpc,
 		ArbRollupContractAddress: common.HexToAddress(*arbRollupContractAddr),
 	}
 	p := prover.NewProver(config)
