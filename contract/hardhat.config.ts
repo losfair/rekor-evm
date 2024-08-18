@@ -10,6 +10,7 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 999999,
       },
+      evmVersion: "london",
     },
   },
   networks: {
@@ -27,6 +28,10 @@ const config: HardhatUserConfig = {
       url:
         `https://arbitrum-mainnet.infura.io/v3/${process.env.ARBITRUM_INFURA_API_KEY}`,
       accounts: [process.env.ETHEREUM_PRIVATE_KEY!],
+    },
+    scroll: {
+      url: "https://rpc.scroll.io",
+      accounts: [process.env.SCROLL_PRIVATE_KEY!],
     },
   },
 };
