@@ -11,12 +11,11 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"reflect"
 
 	_ "embed"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,8 +30,6 @@ import (
 //go:embed rekor-witness-abi.json
 var rekorWitnessAbiJson []byte
 var rekorWitnessAbi abi.ABI
-var secp256k1N = new(big.Int).SetBytes(common.Hex2Bytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"))
-var secp256k1halfN = new(big.Int).Div(secp256k1N, new(big.Int).SetUint64(2))
 
 func init() {
 	abi_, err := abi.JSON(bytes.NewReader(rekorWitnessAbiJson))
@@ -44,13 +41,12 @@ func init() {
 }
 
 func main() {
-	arbAPIEndpoint := flag.String("arb-api", "https://arb1.arbitrum.io/rpc", "Arbitrum API endpoint")
-	contractAddr_ := flag.String("contract", "0x50d49737c69eb3b6621f825cffd2b13b9e41dda3", "Rekor Witness contract address")
+	l2RPCEndpoint := flag.String("l2-rpc", "https://rpc.scroll.io", "L2 RPC endpoint")
+	contractAddr_ := flag.String("contract", "0x91249a54EfEFF79e333D4c9C49fcfAbE72687909", "Rekor Witness contract address on L2")
 	rekorAPIEndpoint := flag.String("rekor-api", "https://rekor.sigstore.dev", "Rekor API endpoint")
-	chainID := flag.Int("chain-id", 42161, "Arbitrum chain ID")
-	kmsKeyID := flag.String("kms-key-id", "", "KMS key ID")
-	maxGasPriceGwei := flag.Float64("max-gas-price-gwei", 0.03, "Max gas price in Gwei")
-	maxGasLimit := flag.Uint64("max-gas-limit", 5000000, "Max gas limit")
+	chainID := flag.Int("chain-id", 534352, "Chain ID")
+	maxGasPriceGwei := flag.Float64("max-gas-price-gwei", 0.1, "Max gas price in Gwei")
+	maxGasLimit := flag.Uint64("max-gas-limit", 2000000, "Max gas limit")
 	live := flag.Bool("live", false, "Submit transaction to network")
 	flag.Parse()
 
@@ -61,15 +57,21 @@ func main() {
 	}
 	defer logger.Sync() // flushes buffer, if any
 
-	if *kmsKeyID == "" {
-		logger.Fatal("KMS key ID is required")
+	privateKeyHex := os.Getenv("ETH_PRIVATE_KEY")
+	if privateKeyHex == "" {
+		logger.Fatal("ETH_PRIVATE_KEY env var is required")
 	}
 
-	arbc, err := ethclient.Dial(*arbAPIEndpoint)
+	privateKey, err := crypto.HexToECDSA(privateKeyHex)
 	if err != nil {
-		logger.Fatal("Failed to connect to Arbitrum API", zap.Error(err))
+		logger.Fatal("Failed to parse ETH_PRIVATE_KEY", zap.Error(err))
 	}
-	defer arbc.Close()
+
+	l2c, err := ethclient.Dial(*l2RPCEndpoint)
+	if err != nil {
+		logger.Fatal("Failed to connect to L2 RPC", zap.Error(err))
+	}
+	defer l2c.Close()
 
 	contractAddr := common.HexToAddress(*contractAddr_)
 
@@ -143,7 +145,7 @@ func main() {
 		logger.Fatal("Failed to pack payload", zap.Error(err))
 	}
 
-	callRes, err := arbc.CallContract(context.Background(), ethereum.CallMsg{
+	callRes, err := l2c.CallContract(context.Background(), ethereum.CallMsg{
 		To:   &contractAddr,
 		Data: payload,
 	}, nil)
@@ -188,7 +190,7 @@ func main() {
 		}
 	}
 
-	gasPrice, err := arbc.SuggestGasPrice(context.Background())
+	gasPrice, err := l2c.SuggestGasPrice(context.Background())
 	if err != nil {
 		logger.Fatal("Failed to get gas price", zap.Error(err))
 	}
@@ -203,7 +205,7 @@ func main() {
 		logger.Fatal("Failed to pack submitSignedTreeHead payload", zap.Error(err))
 	}
 
-	gas, err := arbc.EstimateGas(context.Background(), ethereum.CallMsg{
+	gas, err := l2c.EstimateGas(context.Background(), ethereum.CallMsg{
 		To:   &contractAddr,
 		Data: payload,
 	})
@@ -214,33 +216,10 @@ func main() {
 		logger.Fatal("Estimated gas too high", zap.Uint64("gas", gas), zap.Uint64("maxGasLimit", *maxGasLimit))
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(context.Background())
-	if err != nil {
-		logger.Fatal("Failed to load AWS config", zap.Error(err))
-	}
-
-	kmsc := kms.NewFromConfig(awsConfig)
-	walletPubKeyInfo, err := kmsc.GetPublicKey(context.Background(), &kms.GetPublicKeyInput{
-		KeyId: kmsKeyID,
-	})
-	if err != nil {
-		logger.Fatal("Failed to get public key", zap.Error(err))
-	}
-
-	if walletPubKeyInfo.KeySpec != "ECC_SECG_P256K1" {
-		logger.Fatal("key spec is not ECC_SECG_P256K1", zap.String("keySpec", string(walletPubKeyInfo.KeySpec)))
-	}
-
-	walletPubKey, err := parseASN1SECP256K1PublicKey(walletPubKeyInfo.PublicKey)
-	if err != nil {
-		logger.Fatal("Failed to parse public key", zap.Error(err))
-	}
-	walletPubKeyMarshalled := crypto.FromECDSAPub(walletPubKey)
-
-	address := crypto.PubkeyToAddress(*walletPubKey)
+	address := crypto.PubkeyToAddress(privateKey.PublicKey)
 	logger.Info("wallet address", zap.String("address", address.Hex()))
 
-	nonce, err := arbc.PendingNonceAt(context.Background(), address)
+	nonce, err := l2c.PendingNonceAt(context.Background(), address)
 	if err != nil {
 		logger.Fatal("Failed to get nonce", zap.Error(err))
 	}
@@ -259,35 +238,9 @@ func main() {
 	logger.Info("transaction created", zap.Any("rawTx", rawTx), zap.String("unsignedTxHash", txHash.Hex()))
 
 	if *live {
-		rawSig, err := kmsc.Sign(context.Background(), &kms.SignInput{
-			KeyId:            kmsKeyID,
-			Message:          txHash[:],
-			SigningAlgorithm: "ECDSA_SHA_256",
-			MessageType:      "DIGEST",
-		})
+		sig, err := crypto.Sign(txHash[:], privateKey)
 		if err != nil {
 			logger.Fatal("Failed to sign transaction", zap.Error(err))
-		}
-		r, s, err := parseASN1ECDSASignature(rawSig.Signature)
-		if err != nil {
-			logger.Fatal("Failed to parse signature", zap.Error(err))
-		}
-
-		if s.Cmp(secp256k1halfN) == 1 {
-			s = new(big.Int).Sub(secp256k1N, s)
-		}
-
-		sig := make([]byte, 65)
-		r.FillBytes(sig[0:32])
-		s.FillBytes(sig[32:64])
-
-		candidate, _ := crypto.Ecrecover(txHash[:], sig)
-		if !bytes.Equal(candidate, walletPubKeyMarshalled) {
-			sig[64] = 1
-			candidate, _ = crypto.Ecrecover(txHash[:], sig)
-			if !bytes.Equal(candidate, walletPubKeyMarshalled) {
-				logger.Fatal("Failed to generate Ethereum signature")
-			}
 		}
 
 		tx, err := wrappedTx.WithSignature(signer, sig)
@@ -295,7 +248,7 @@ func main() {
 			logger.Fatal("Failed to get signed transaction", zap.Error(err))
 		}
 
-		err = arbc.SendTransaction(context.Background(), tx)
+		err = l2c.SendTransaction(context.Background(), tx)
 		if err != nil {
 			logger.Fatal("Failed to send transaction", zap.Error(err))
 		}

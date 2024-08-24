@@ -3,13 +3,10 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"math/big"
-
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // parseASN1ECDSAPublicKeyPem takes a PEM encoded ECDSA public key as input and returns the *ecdsa.PublicKey and an error if any.
@@ -54,24 +51,4 @@ func parseASN1ECDSASignature(sig []byte) (r, s *big.Int, err error) {
 	}
 
 	return rs.R, rs.S, nil
-}
-
-func parseASN1SECP256K1PublicKey(raw []byte) (*ecdsa.PublicKey, error) {
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.22.1:src/crypto/x509/x509.go
-	type publicKeyInfo struct {
-		Raw       asn1.RawContent
-		Algorithm pkix.AlgorithmIdentifier
-		PublicKey asn1.BitString
-	}
-
-	var info publicKeyInfo
-	asn1.Unmarshal(raw, &info)
-
-	rawPubKey := info.PublicKey.RightAlign()
-	if len(rawPubKey) != 65 {
-		return nil, errors.New("invalid public key length")
-	}
-
-	pubKey := ecdsa.PublicKey{Curve: crypto.S256(), X: new(big.Int).SetBytes(rawPubKey[1:33]), Y: new(big.Int).SetBytes(rawPubKey[33:])}
-	return &pubKey, nil
 }
