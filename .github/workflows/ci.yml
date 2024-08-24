@@ -1,0 +1,73 @@
+name: ci
+on:
+  push:
+
+jobs:
+  build-sigcheck:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Install cosign
+      uses: sigstore/cosign-installer@v3.6.0
+    - name: Install musl-tools
+      run: sudo apt-get update && sudo apt-get install -y musl-tools
+    - name: Install Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+        target: x86_64-unknown-linux-musl
+    - name: Build
+      run: |
+        set -e
+        mkdir build
+        cd sigcheck
+        cargo build --release --target x86_64-unknown-linux-musl
+        cp target/x86_64-unknown-linux-musl/release/sigcheck ../build/
+        cd ../build
+        ls -lash sigcheck
+        file sigcheck
+    - name: Sign
+      run: |
+        set -e
+        cd build
+        cosign sign-blob -y --bundle ./sigcheck.sig.json ./sigcheck
+        ls -lash
+        cat sigcheck.sig.json
+    - name: Push binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: sigcheck
+        path: ./build
+  release:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+    - build-sigcheck
+    env:
+      PACKAGE_NAME: sigcheck-${{ github.ref_name }}.tar.gz
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - uses: actions/download-artifact@v4
+      with:
+        name: sigcheck
+        path: ./sigcheck-build
+    - name: Package
+      run: |
+        set -e
+        cd sigcheck-build
+        chmod +x sigcheck
+        tar c . | gzip > ../$PACKAGE_NAME
+    - name: Publish release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ env.PACKAGE_NAME }}
+        prerelease: true
